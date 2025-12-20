@@ -12,15 +12,17 @@ i2c = busio.I2C(board.SCL, board.SDA)
 pcf = PCF8575(i2c, 0x27)
 
 # Create Pin objects for all 16 pins
+# Create Pin objects for all pins
 pins = [pcf.get_pin(i) for i in range(16)]
 
-# 1️⃣ First, set all pins LOW/HIGH immediately to avoid flicker
+# Immediately set all pins HIGH (OFF)
 for pin in pins:
-    pin.value = True  # HIGH = OFF if active LOW
+    pin.value = True
 
-# 2️⃣ Then set directions
+# Then set direction to OUTPUT
 for pin in pins:
     pin.direction = Direction.OUTPUT
+
 
 print("Starting sequence...")
 
