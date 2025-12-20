@@ -20,42 +20,48 @@ RELAY_ON  = 0
 RELAY_OFF = 1
 
 # -------- Initialize inputs -----------
-inputs1 = []
-inputs2 = []
+inputs1 = [mcp1.get_pin(pin) for pin in range(16)]
+inputs2 = [mcp2.get_pin(pin) for pin in range(16)]
 
-for pin in range(16):
-    p1 = mcp1.get_pin(pin)
-    p2 = mcp2.get_pin(pin)
-
-    p1.switch_to_input()  # external pull-down
-    p2.switch_to_input()
-
-    inputs1.append(p1)
-    inputs2.append(p2)
+for p in inputs1 + inputs2:
+    p.switch_to_input()  # pulled-down inputs
 
 # -------- Safety: all relays OFF -------
 pcf1.write_gpio(0xFFFF)
 pcf2.write_gpio(0xFFFF)
 time.sleep(0.2)
 
-print("32 input → 32 relay controller started")
+print("32 input → 32 relay controller started (debug mode)")
 
 # ---------------- LOOP ----------------
 while True:
     out1 = 0xFFFF
     out2 = 0xFFFF
 
-    # MCP 0x20 → PCF 0x26
+    # ----- read MCP #1 -----
+    input_vals1 = []
     for pin in range(16):
-        if inputs1[pin].value:        # HIGH input
-            out1 &= ~(1 << pin)       # relay ON
+        val = inputs1[pin].value
+        input_vals1.append(val)
+        if val:
+            out1 &= ~(1 << pin)  # active-low relay ON
 
-    # MCP 0x21 → PCF 0x27
+    # ----- read MCP #2 -----
+    input_vals2 = []
     for pin in range(16):
-        if inputs2[pin].value:
+        val = inputs2[pin].value
+        input_vals2.append(val)
+        if val:
             out2 &= ~(1 << pin)
 
+    # ----- print debug info -----
+    print("\nInputs MCP 0x20:", ["HIGH" if v else "LOW" for v in input_vals1])
+    print("Relay out PCF 0x26: {:016b}".format(out1))
+    print("Inputs MCP 0x21:", ["HIGH" if v else "LOW" for v in input_vals2])
+    print("Relay out PCF 0x27: {:016b}".format(out2))
+
+    # ----- write to relays -----
     pcf1.write_gpio(out1)
     pcf2.write_gpio(out2)
 
-    time.sleep(0.01)  # 100 Hz update, fast & stable
+    time.sleep(0.1)  # 10 Hz update
