@@ -3,19 +3,21 @@ import busio
 import adafruit_pcf8575
 import time
 
-# Use the I2C bus
+# I2C setup
 i2c = busio.I2C(board.SCL, board.SDA)
 
-# PCF8575 address (0x27 is from your i2cdetect)
+# PCF8575 at address 0x27
 pcf = adafruit_pcf8575.PCF8575(i2c, 0x27)
 
-# There are 16 pins: 0-15
-pins = list(range(16))
+# Initialize all pins as outputs if needed (PCF8575 defaults to input)
+for pin in range(16):
+    # some libraries don't require setup; just write directly
+    pcf.output(pin, False)  # set LOW
 
-# Loop to turn them on/off one by one
+# Toggle pins
 while True:
-    for pin in pins:
-        pcf.pin(pin).value = True   # Turn ON
+    for pin in range(16):
+        pcf.output(pin, True)  # HIGH
         time.sleep(0.5)
-        pcf.pin(pin).value = False  # Turn OFF
+        pcf.output(pin, False)  # LOW
         time.sleep(0.5)
