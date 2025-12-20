@@ -1,38 +1,34 @@
-#!/usr/bin/env python3
 import time
 import board
 import busio
 from adafruit_pcf8575 import PCF8575
-from digitalio import Direction
 
-# Initialize I2C
 i2c = busio.I2C(board.SCL, board.SDA)
+pcf = PCF8575(i2c, address=0x27)
 
-# PCF8575 at address 0x27
-pcf = PCF8575(i2c, 0x27)
+RELAY_ON  = 0
+RELAY_OFF = 1
 
-# Create Pin objects for all 16 pins
-# Create Pin objects for all pins
-pins = [pcf.get_pin(i) for i in range(16)]
+def set_all(state):
+    value = 0x0000 if state == RELAY_ON else 0xFFFF
+    pcf.write_gpio(value)
 
-# Immediately set all pins HIGH (OFF)
-for pin in pins:
-    pin.value = True
+def set_one(pin, state):
+    value = 0xFFFF
+    if state == RELAY_ON:
+        value &= ~(1 << pin)
+    pcf.write_gpio(value)
 
-# Then set direction to OUTPUT
-for pin in pins:
-    pin.direction = Direction.OUTPUT
+# 🔥 CRITICAL FIX: force OFF immediately
+set_all(RELAY_OFF)
 
+# Give hardware time to settle
+time.sleep(0.5)
 
-print("Starting sequence...")
-
+# Test: ON then OFF one by one
 while True:
-    # Turn pins ON one by one
-    for pin in pins:
-        pin.value = False  # LOW = ON
+    for pin in range(16):
+        set_one(pin, RELAY_ON)
         time.sleep(0.5)
-
-    # Turn pins OFF one by one
-    for pin in pins:
-        pin.value = True   # HIGH = OFF
-        time.sleep(0.5)
+        set_all(RELAY_OFF)
+        time.sleep(0.2)
