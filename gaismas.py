@@ -1,19 +1,21 @@
 import time
 import board
 import busio
-from adafruit_mcp230xx.mcp23017 import MCP23017
+from adafruit_mcp230xx import mcp23017
 from adafruit_pcf8575 import PCF8575
 
-# ---------------- I2C ----------------
+# I2C bus
 i2c = busio.I2C(board.SCL, board.SDA)
 
-# ----------- Input expanders ----------
-mcp1 = MCP23017(i2c, address=0x20)
-mcp2 = MCP23017(i2c, address=0x21)
+# MCP23017 input boards
+mcp1 = mcp23017.MCP23017(i2c, address=0x20)
+mcp2 = mcp23017.MCP23017(i2c, address=0x21)
 
-# ----------- Relay expanders ----------
+# PCF8575 relay boards
 pcf1 = PCF8575(i2c, address=0x26)
 pcf2 = PCF8575(i2c, address=0x27)
+
+# rest of your code ...
 
 # -------- Relay logic (ACTIVE LOW) ----
 RELAY_ON  = 0
