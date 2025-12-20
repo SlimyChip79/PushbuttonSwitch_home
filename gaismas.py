@@ -14,10 +14,13 @@ pcf = PCF8575(i2c, 0x27)
 # Create Pin objects for all 16 pins
 pins = [pcf.get_pin(i) for i in range(16)]
 
-# Set all pins as outputs and initialize HIGH (OFF if using active LOW relays)
+# 1️⃣ First, set all pins LOW/HIGH immediately to avoid flicker
+for pin in pins:
+    pin.value = True  # HIGH = OFF if active LOW
+
+# 2️⃣ Then set directions
 for pin in pins:
     pin.direction = Direction.OUTPUT
-    pin.value = True
 
 print("Starting sequence...")
 
@@ -25,11 +28,9 @@ while True:
     # Turn pins ON one by one
     for pin in pins:
         pin.value = False  # LOW = ON
-        print(f"Pin {pins.index(pin)} ON")
         time.sleep(0.5)
 
     # Turn pins OFF one by one
     for pin in pins:
         pin.value = True   # HIGH = OFF
-        print(f"Pin {pins.index(pin)} OFF")
         time.sleep(0.5)
