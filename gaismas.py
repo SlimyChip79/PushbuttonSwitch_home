@@ -7,12 +7,12 @@ from adafruit_mcp230xx.digital_inout import DigitalInOut
 
 # -------------------- I2C SETUP --------------------
 i2c = busio.I2C(board.SCL, board.SDA)
-time.sleep(1)  # small delay for bus stability
+time.sleep(1)  # stabilize bus
 
 # -------------------- INPUT BOARDS --------------------
 try:
     mcp1 = mcp23017.MCP23017(i2c, address=0x20)
-    time.sleep(0.1)  # stabilize bus
+    time.sleep(0.1)
     mcp2 = mcp23017.MCP23017(i2c, address=0x21)
 except OSError as e:
     print("Error initializing MCP23017 boards:", e)
@@ -34,7 +34,7 @@ for pin in range(16):
     inputs.append(p)
 
 # -------------------- RELAYS --------------------
-relay_states = [False]*32  # all OFF at start
+relay_states = [False]*32  # all OFF
 out1 = 0xFFFF  # PCF8575 HIGH = OFF
 out2 = 0xFFFF
 pcf1.write_gpio(out1)
@@ -58,23 +58,13 @@ while True:
 
         # Update outputs
         if i < 16:
-            if relay_states[i]:
-                out1 &= ~(1 << i)  # LOW = ON
-            else:
-                out1 |= (1 << i)   # HIGH = OFF
+            out1 = (out1 & ~(1 << i)) if relay_states[i] else (out1 | (1 << i))
         else:
             idx = i - 16
-            if relay_states[i]:
-                out2 &= ~(1 << idx)
-            else:
-                out2 |= (1 << idx)
+            out2 = (out2 & ~(1 << idx)) if relay_states[i] else (out2 | (1 << idx))
 
     # Write to relay boards
     pcf1.write_gpio(out1)
     pcf2.write_gpio(out2)
-
-    # Optional debug
-    # print([inp.value for inp in inputs])
-    # print([int(r) for r in relay_states])
 
     time.sleep(0.05)
