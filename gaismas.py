@@ -3,37 +3,37 @@ import board
 import busio
 from adafruit_mcp230xx import mcp23017
 from adafruit_pcf8575 import PCF8575
+from adafruit_mcp230xx.digital_inout import DigitalInOut
 
 # -------------------- I2C SETUP --------------------
 i2c = busio.I2C(board.SCL, board.SDA)
 time.sleep(1)
 
-# MCP23017 input boards
+# -------------------- INPUT BOARDS --------------------
 mcp1 = mcp23017.MCP23017(i2c, address=0x20)
 mcp2 = mcp23017.MCP23017(i2c, address=0x21)
 
-# PCF8575 relay boards
+inputs = []
+
+# MCP1 pins 0-15
+for pin in range(16):
+    p = DigitalInOut(mcp1.get_pin(pin))
+    p.switch_to_input()
+    inputs.append(p)
+
+# MCP2 pins 0-15
+for pin in range(16):
+    p = DigitalInOut(mcp2.get_pin(pin))
+    p.switch_to_input()
+    inputs.append(p)
+
+# -------------------- RELAY BOARDS --------------------
 pcf1 = PCF8575(i2c, address=0x26)
 pcf2 = PCF8575(i2c, address=0x27)
 
-# -------------------- INPUT SETUP --------------------
-inputs = []
-
-# MCP1 pins 0–15
-for pin in range(16):
-    p = mcp1.get_pin(pin)
-    p.switch_to_input(pull=None)  # use default, can also use p.switch_to_input(pull=pull.UP)
-    inputs.append(p)
-
-# MCP2 pins 0–15
-for pin in range(16):
-    p = mcp2.get_pin(pin)
-    p.switch_to_input(pull=None)
-    inputs.append(p)
-
-# -------------------- RELAY STATE --------------------
+# -------------------- RELAY STATES --------------------
 relay_states = [False]*32  # all OFF
-out1 = 0xFFFF  # PCF8575 outputs start HIGH (OFF)
+out1 = 0xFFFF  # HIGH = OFF
 out2 = 0xFFFF
 pcf1.write_gpio(out1)
 pcf2.write_gpio(out2)
@@ -41,18 +41,18 @@ pcf2.write_gpio(out2)
 # -------------------- BUTTON STATE TRACKING --------------------
 last_values = [1]*32  # initialize to HIGH (released)
 
-print("32-input pushbutton controller started")
+print("32-input pushbutton controller started, all relays OFF at start")
 
 # -------------------- MAIN LOOP --------------------
 while True:
     for i, inp in enumerate(inputs):
-        currentState = inp.value  # LOW=pressed, HIGH=released
+        current_val = inp.value
 
-        # Arduino-style edge detection: LOW -> HIGH transition
-        if currentState == 0 and last_values[i] == 1:
+        # detect LOW->HIGH transition (press)
+        if current_val == 0 and last_values[i] == 1:
             relay_states[i] = not relay_states[i]
 
-        last_values[i] = currentState
+        last_values[i] = current_val
 
         # update outputs
         if i < 16:
@@ -67,8 +67,8 @@ while True:
             else:
                 out2 |= (1 << idx)
 
-    # write outputs
+    # write outputs to PCF8575
     pcf1.write_gpio(out1)
     pcf2.write_gpio(out2)
 
-    time.sleep(0.05)
+    time.sleep(0.05)  # small loop delay
