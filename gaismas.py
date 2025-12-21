@@ -15,55 +15,64 @@ mcp2 = mcp23017.MCP23017(i2c, address=0x21)
 pcf1 = PCF8575(i2c, address=0x26)
 pcf2 = PCF8575(i2c, address=0x27)
 
-# rest of your code ...
-
-# -------- Relay logic (ACTIVE LOW) ----
+# ACTIVE-LOW relay logic
 RELAY_ON  = 0
 RELAY_OFF = 1
 
-# -------- Initialize inputs -----------
+# Inputs
 inputs1 = [mcp1.get_pin(pin) for pin in range(16)]
 inputs2 = [mcp2.get_pin(pin) for pin in range(16)]
 
 for p in inputs1 + inputs2:
-    p.switch_to_input()  # pulled-down inputs
+    p.switch_to_input()  # external pull-down
 
-# -------- Safety: all relays OFF -------
+# --- Arduino-style state variables ---
+lastState1 = [True] * 16   # assume HIGH → matches Arduino pull-up logic
+lastState2 = [True] * 16
+
+relayState1 = [False] * 16
+relayState2 = [False] * 16
+
+# Safety: all relays OFF
 pcf1.write_gpio(0xFFFF)
 pcf2.write_gpio(0xFFFF)
 time.sleep(0.2)
 
-print("32 input → 32 relay controller started (debug mode)")
+print("Arduino-style pushbutton toggle logic started")
 
-# ---------------- LOOP ----------------
 while True:
+    # ----- MCP #1 -----
+    for pin in range(16):
+        currentState = inputs1[pin].value
+
+        # SAME LOGIC AS YOUR ARDUINO CODE
+        if currentState == False and lastState1[pin] == True:
+            relayState1[pin] = not relayState1[pin]
+            print(f"MCP 0x20 pin {pin} toggled → {'ON' if relayState1[pin] else 'OFF'}")
+
+        lastState1[pin] = currentState
+
+    # ----- MCP #2 -----
+    for pin in range(16):
+        currentState = inputs2[pin].value
+
+        if currentState == False and lastState2[pin] == True:
+            relayState2[pin] = not relayState2[pin]
+            print(f"MCP 0x21 pin {pin} toggled → {'ON' if relayState2[pin] else 'OFF'}")
+
+        lastState2[pin] = currentState
+
+    # ----- Write relays -----
     out1 = 0xFFFF
     out2 = 0xFFFF
 
-    # ----- read MCP #1 -----
-    input_vals1 = []
     for pin in range(16):
-        val = inputs1[pin].value
-        input_vals1.append(val)
-        if val:
-            out1 &= ~(1 << pin)  # active-low relay ON
-
-    # ----- read MCP #2 -----
-    input_vals2 = []
-    for pin in range(16):
-        val = inputs2[pin].value
-        input_vals2.append(val)
-        if val:
+        if relayState1[pin]:
+            out1 &= ~(1 << pin)
+        if relayState2[pin]:
             out2 &= ~(1 << pin)
 
-    # ----- print debug info -----
-    print("\nInputs MCP 0x20:", ["HIGH" if v else "LOW" for v in input_vals1])
-    print("Relay out PCF 0x26: {:016b}".format(out1))
-    print("Inputs MCP 0x21:", ["HIGH" if v else "LOW" for v in input_vals2])
-    print("Relay out PCF 0x27: {:016b}".format(out2))
-
-    # ----- write to relays -----
     pcf1.write_gpio(out1)
     pcf2.write_gpio(out2)
 
-    time.sleep(0.1)  # 10 Hz update
+    time.sleep(0.05)
