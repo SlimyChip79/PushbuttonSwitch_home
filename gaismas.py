@@ -1,52 +1,100 @@
 #!/usr/bin/env python3
-from smbus2 import SMBus
 import time
+from smbus2 import SMBus
 
+# ================= CONFIG =================
 I2C_BUS = 1
-PCF_ADDR = 0x27  # your PCF8575 relay board address
-DELAY = 1  # seconds
+PCA_ADDR = 0x20  # Input extender (PCA9555)
+PCF_ADDR = 0x27  # Relay extender (PCF8575)
 
-def write_relays(bus, relay_bits):
+# ================= HELPERS =================
+def log(msg):
+    print(f"[GAISMAS] {time.strftime('%H:%M:%S')} | {msg}", flush=True)
+
+def read_inputs(bus):
     """
-    Writes 16-bit relay state to PCF8575.
-    Corrects for active-low and physical mapping:
-      - physical relays 1-8 = P8-P15 (high byte)
-      - physical relays 9-16 = P0-P7 (low byte)
+    Read 16 inputs from PCA9555 (2 ports)
+    Returns 16-bit integer: bit0 = input1, bit15 = input16
     """
-    high_byte = relay_bits & 0xFF       # bits 0-7 = physical relays 9-16
-    low_byte  = (relay_bits >> 8) & 0xFF  # bits 8-15 = physical relays 1-8
-    # invert for active-low
-    high_byte ^= 0xFF
+    try:
+        p0 = bus.read_byte_data(PCA_ADDR, 0x00)  # Input port 0
+        p1 = bus.read_byte_data(PCA_ADDR, 0x01)  # Input port 1
+        # Combine into 16-bit int
+        inputs = (p1 << 8) | p0
+        return inputs
+    except OSError as e:
+        log(f"PCA read error: {e}")
+        return 0xFFFF  # Default all high if error
+
+def write_relays_pcf(bus, relay_bits):
+    """
+    Write 16 relays to PCF8575 using working active-low method
+    relay_bits: 16-bit int, bit0 = relay1, bit15 = relay16
+    """
+    # Map low/high bytes
+    low_byte  = relay_bits & 0xFF       # relays 1-8
+    high_byte = (relay_bits >> 8) & 0xFF  # relays 9-16
+
+    # Invert for active-low relays
     low_byte  ^= 0xFF
+    high_byte ^= 0xFF
+
     try:
         bus.write_byte_data(PCF_ADDR, 0x00, low_byte)
         time.sleep(0.01)
         bus.write_byte_data(PCF_ADDR, 0x01, high_byte)
         time.sleep(0.01)
-    except Exception as e:
-        print(f"PCF write error: {e}")
+    except OSError as e:
+        log(f"PCF write error: {e}")
 
-def main():
+# ================= INIT =================
+log("Service starting")
+
+try:
     bus = SMBus(I2C_BUS)
+    log("I2C bus opened")
+except Exception as e:
+    log(f"I2C init failed: {e}")
+    bus = None
+
+if bus:
+    # Initialize PCA9555: all inputs
     try:
-        print("Clearing all relays...")
-        write_relays(bus, 0x0000)
+        bus.write_byte_data(PCA_ADDR, 0x06, 0xFF)  # Port 0 config input
+        bus.write_byte_data(PCA_ADDR, 0x07, 0xFF)  # Port 1 config input
+        log("PCA9555 configured (16 inputs)")
+    except OSError as e:
+        log(f"PCA init error: {e}")
+
+    # Initialize PCF8575: all relays off
+    write_relays_pcf(bus, 0x0000)
+    log("PCF8575 relays cleared")
+
+# ================= MAIN LOOP =================
+prev_inputs = 0xFFFF  # Assume all high at start
+
+try:
+    while True:
+        if not bus:
+            time.sleep(1)
+            continue
+
+        inputs = read_inputs(bus)
+        log(f"INPUTS : {inputs:016b}")
+
+        # Map inputs directly to relays
+        relay_bits = inputs  # 1=input high -> relay off, 0=input low -> relay on
+        write_relays_pcf(bus, relay_bits)
+        log(f"RELAYS : {relay_bits:016b}")
+
         time.sleep(1)
 
-        # Test each relay individually
-        for i in range(16):
-            relay_state = 1 << i
-            print(f"Relay {i+1} ON")
-            write_relays(bus, relay_state)
-            time.sleep(DELAY)
-            print(f"Relay {i+1} OFF")
-            write_relays(bus, 0x0000)
-            time.sleep(DELAY)
+except KeyboardInterrupt:
+    log("Service stopped by user")
 
-    finally:
-        print("Clearing all relays at end")
-        write_relays(bus, 0x0000)
+finally:
+    if bus:
+        # Turn off all relays
+        write_relays_pcf(bus, 0x0000)
         bus.close()
-
-if __name__ == "__main__":
-    main()
+    log("Service exited")
