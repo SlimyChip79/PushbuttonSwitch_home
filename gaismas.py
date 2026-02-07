@@ -5,7 +5,7 @@ import smbus2
 from datetime import datetime
 
 I2C_BUS = 1
-PCF_ADDR = 0x20
+PCF_ADDR = 0x27
 
 bus = smbus2.SMBus(I2C_BUS)
 
