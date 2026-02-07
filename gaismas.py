@@ -1,50 +1,37 @@
-#!/usr/bin/env python3
 from smbus2 import SMBus
 import time
 
-# ================= CONFIG =================
+PCF_ADDR = 0x27
 I2C_BUS = 1
-PCF_ADDR = 0x27  # PCF8575 relay board
-DELAY = 0.5      # seconds between toggles
 
-# ================= HELPER =================
-def write_pcf(value):
-    """
-    Write 16-bit value to PCF8575 safely.
-    Handles high and low bytes correctly.
-    """
-    try:
-        low = value & 0xFF
-        high = (value >> 8) & 0xFF
-        bus.write_i2c_block_data(PCF_ADDR, low, [high])
-    except Exception as e:
-        print(f"Failed to write PCF8575: {e}")
-
-
-# ================= START =================
 bus = SMBus(I2C_BUS)
-print("PCF8575 test starting...")
 
-# Initialize all relays off (assuming active-low)
-relays = 0xFFFF
-write_pcf(relays)
-time.sleep(1)
+def write_pcf16(value):
+    """Write 16-bit value to PCF8575 (Port0 = bits 0-7, Port1 = bits 8-15)."""
+    low_byte = value & 0xFF
+    high_byte = (value >> 8) & 0xFF
+    # Swap bytes if your board expects high byte first
+    bus.write_i2c_block_data(PCF_ADDR, 0x00, [low_byte, high_byte])
 
 try:
+    # Set all relays off (assuming active-low)
+    write_pcf16(0xFFFF)
+    time.sleep(1)
+
     while True:
-        # Turn ON each relay one by one
+        # Turn on one relay at a time
         for i in range(16):
-            print(f"Turning ON relay {i+1}")
-            relays &= ~bitmask(i)  # clear bit → active
-            write_pcf(relays)
-            time.sleep(DELAY)
-            
-            print(f"Turning OFF relay {i+1}")
-            relays |= bitmask(i)   # set bit → inactive
-            write_pcf(relays)
-            time.sleep(DELAY)
+            value = 0xFFFF  # all off
+            value &= ~(1 << i)  # set current relay ON (active-low)
+            write_pcf16(value)
+            print(f"Relay {i+1} ON")
+            time.sleep(0.5)
+
+        # Turn all relays off
+        write_pcf16(0xFFFF)
+        print("All relays OFF")
+        time.sleep(1)
 
 except KeyboardInterrupt:
-    print("Stopping, turning all relays off...")
-    write_pcf(0xFFFF)  # all off
-    bus.close()
+    write_pcf16(0xFFFF)  # ensure all relays off on exit
+    print("Exiting, all relays OFF")
