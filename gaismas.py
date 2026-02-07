@@ -5,8 +5,8 @@ from datetime import datetime
 # ================= CONFIG =================
 I2C_BUS = 1
 
-PCA_ADDR = 0x20   # PCA9555 (inputs)
-PCF_ADDR = 0x27   # PCF8575 (relays)
+PCA_ADDR = 0x20      # INPUT expander (PCA9555)
+PCF_ADDR = 0x27      # RELAY expander (PCF8575)
 
 # PCA9555 registers
 REG_INPUT_0  = 0x00
@@ -14,68 +14,50 @@ REG_INPUT_1  = 0x01
 REG_CONFIG_0 = 0x06
 REG_CONFIG_1 = 0x07
 
-POLL_INTERVAL = 0.2  # seconds
-
 # ================= LOG =================
 def log(msg):
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[GAISMAS] {ts} | {msg}", flush=True)
+    print(f"[GAISMAS] {datetime.now().strftime('%H:%M:%S')} | {msg}", flush=True)
 
-# ================= I2C =================
+# ================= START =================
+log("Service starting")
+
 bus = SMBus(I2C_BUS)
 log("I2C bus opened")
 
 # ================= PCA SETUP =================
-try:
-    # Port 0 = inputs (1)
-    # Port 1 = inputs (1)  ← change to 0x00 if you want half outputs
-    bus.write_byte_data(PCA_ADDR, REG_CONFIG_0, 0xFF)
-    bus.write_byte_data(PCA_ADDR, REG_CONFIG_1, 0xFF)
-
-    log("PCA9555 configured (16 inputs)")
-except Exception as e:
-    log(f"PCA9555 init FAILED: {e}")
-    raise SystemExit(1)
+# All 16 pins as INPUTS
+bus.write_byte_data(PCA_ADDR, REG_CONFIG_0, 0xFF)
+bus.write_byte_data(PCA_ADDR, REG_CONFIG_1, 0xFF)
+log("PCA9555 configured (16 inputs)")
 
 # ================= PCF SETUP =================
-try:
-    # All relays OFF
-    bus.write_word_data(PCF_ADDR, 0x00, 0x0000)
-    log("PCF8575 relays cleared")
-except Exception as e:
-    log(f"PCF8575 init FAILED: {e}")
-    raise SystemExit(1)
+# All relays OFF (HIGH)
+bus.write_word_data(PCF_ADDR, 0x00, 0xFFFF)
+log("PCF8575 relays cleared")
 
-# ================= STATE =================
 last_inputs = None
-relay_state = 0x0000
 
 # ================= MAIN LOOP =================
-try:
-    while True:
+while True:
+    try:
         # Read PCA inputs
         p0 = bus.read_byte_data(PCA_ADDR, REG_INPUT_0)
         p1 = bus.read_byte_data(PCA_ADDR, REG_INPUT_1)
-        inputs = (p1 << 8) | p0   # 16-bit value
+        inputs = (p1 << 8) | p0
 
+        # Only act on change
         if inputs != last_inputs:
-            last_inputs = inputs
-
-            # PCA inputs are active-low usually
-            # pressed = 0 → relay ON
-            relay_state = (~inputs) & 0xFFFF
-
-            bus.write_word_data(PCF_ADDR, 0x00, relay_state)
+            # Active LOW inputs → Active LOW relays
+            relays = inputs  # direct 1:1 mapping
+            bus.write_word_data(PCF_ADDR, 0x00, relays)
 
             log(f"INPUTS : {inputs:016b}")
-            log(f"RELAYS : {relay_state:016b}")
+            log(f"RELAYS : {relays:016b}")
 
-        time.sleep(POLL_INTERVAL)
+            last_inputs = inputs
 
-except KeyboardInterrupt:
-    log("Stopping (Ctrl+C)")
+        time.sleep(0.05)  # 50ms polling
 
-finally:
-    bus.write_word_data(PCF_ADDR, 0x00, 0x0000)
-    bus.close()
-    log("All relays OFF, bus closed")
+    except Exception as e:
+        log(f"I2C error: {e}")
+        time.sleep(1)
