@@ -2,51 +2,63 @@
 import time
 from smbus2 import SMBus
 
+# I2C settings
 I2C_BUS = 1
 PCF_ADDR = 0x27  # PCF8575 relay board
 
-def write_relays(bus, value):
+# Initialize relay states (all off)
+relays = [0] * 16  # 0=off, 1=on
+bus = SMBus(I2C_BUS)
+
+def write_pcf(relays):
     """
-    Write 16-bit value to PCF8575
-    Each bit = one relay (0=on, 1=off for active-low board)
+    Write 16 relays to PCF8575
+    Each element in relays list corresponds to 1 relay (0=off, 1=on)
+    PCF8575 is active-low, so we invert bits
     """
+    value = 0
+    for i, state in enumerate(relays):
+        if state:
+            value |= (1 << i)
+    # Active-low: invert
+    value ^= 0xFFFF
     low_byte  = value & 0xFF
     high_byte = (value >> 8) & 0xFF
-
-    # Active-low, invert bytes
-    low_byte  ^= 0xFF
-    high_byte ^= 0xFF
 
     bus.write_byte_data(PCF_ADDR, 0x00, low_byte)
     time.sleep(0.01)
     bus.write_byte_data(PCF_ADDR, 0x01, high_byte)
     time.sleep(0.01)
 
-def main():
-    bus = SMBus(I2C_BUS)
-    print("I2C bus opened, starting relay test")
-
-    # Turn all relays off at start
-    write_relays(bus, 0x0000)
-
+def test_relays():
+    """
+    Cycle through all 16 relays, turning them on one by one
+    """
     try:
         while True:
             for i in range(16):
-                state = 1 << i
-                write_relays(bus, state)
-                print(f"RELAYS: {state:016b}")
-                time.sleep(0.5)
-
-            # Turn all relays off
-            write_relays(bus, 0x0000)
+                # Turn all off first
+                for j in range(16):
+                    relays[j] = 0
+                # Turn current relay on
+                relays[i] = 1
+                write_pcf(relays)
+                print(f"RELAYS: {''.join(str(r) for r in relays)}")
+                time.sleep(1)
+            # Turn all off
+            for j in range(16):
+                relays[j] = 0
+            write_pcf(relays)
             print("RELAYS: all off")
             time.sleep(1)
-
     except KeyboardInterrupt:
-        write_relays(bus, 0x0000)
-        print("Relay test stopped, all off")
+        for j in range(16):
+            relays[j] = 0
+        write_pcf(relays)
+        print("Test stopped, all relays off")
     finally:
         bus.close()
 
 if __name__ == "__main__":
-    main()
+    print("Starting PCF8575 relay test...")
+    test_relays()
