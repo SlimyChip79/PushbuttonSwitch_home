@@ -1,117 +1,62 @@
-from smbus2 import SMBus
-import RPi.GPIO as GPIO
 import time
-import sys
-from datetime import datetime
-
-# ================= LOG =================
-def log(msg):
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[GAISMAS] {ts} | {msg}", flush=True)
+from smbus2 import SMBus
 
 # ================= CONFIG =================
+
 I2C_BUS = 1
-PCA_ADDR = 0x20
-INT_PIN = 17
 
-REG_INPUT_0  = 0x00
-REG_INPUT_1  = 0x01
-REG_OUTPUT_1 = 0x03
-REG_CONFIG_0 = 0x06
-REG_CONFIG_1 = 0x07
+PCA_ADDR = 0x21   # input expander
+PCF_ADDR = 0x20   # relay expander
 
-POLL_INTERVAL = 0.02   # 20 ms (safe + fast)
+POLL_INTERVAL = 1.0  # seconds
 
-# ================= START =================
-log("Service starting")
+# =========================================
 
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(INT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+bus = SMBus(I2C_BUS)
 
-# ================= I2C =================
-bus = None
-pca_ready = False
+# --- PCA9555 setup: all pins INPUT ---
+bus.write_byte_data(PCA_ADDR, 0x06, 0xFF)  # port 0 config
+bus.write_byte_data(PCA_ADDR, 0x07, 0xFF)  # port 1 config
 
-def open_i2c():
-    global bus
-    try:
-        bus = SMBus(I2C_BUS)
-        log("I2C bus opened")
-    except Exception as e:
-        bus = None
-        log(f"I2C open failed: {e}")
+# PCF8575 relay state (1 = OFF, 0 = ON)
+pcf_state = 0xFFFF
 
-def pca_setup():
-    global pca_ready
-    if not bus:
-        return
-    try:
-        bus.write_byte_data(PCA_ADDR, REG_CONFIG_0, 0xFF)  # P0 inputs
-        bus.write_byte_data(PCA_ADDR, REG_CONFIG_1, 0x00)  # P1 outputs
-        bus.write_byte_data(PCA_ADDR, REG_OUTPUT_1, 0x00)
-        pca_ready = True
-        log("PCA9555 configured")
-    except Exception as e:
-        pca_ready = False
-        log(f"PCA not ready: {e}")
 
-# ================= PCA READ =================
-def handle_pca_interrupt():
-    if not pca_ready or not bus:
-        return
-    try:
-        p0 = bus.read_byte_data(PCA_ADDR, REG_INPUT_0)
-        p1 = bus.read_byte_data(PCA_ADDR, REG_INPUT_1)
-        log(f"INT | P0={p0:08b} P1={p1:08b}")
+def read_pca_inputs():
+    low = bus.read_byte_data(PCA_ADDR, 0x00)   # inputs 1–8
+    high = bus.read_byte_data(PCA_ADDR, 0x01)  # inputs 9–16
+    return (high << 8) | low
 
-        # Example action:
-        bus.write_byte_data(PCA_ADDR, REG_OUTPUT_1, p0)
 
-    except Exception as e:
-        log(f"PCA read error: {e}")
+def write_pcf(value):
+    bus.write_word_data(PCF_ADDR, 0x00, value)
 
-# ================= INIT =================
-open_i2c()
-pca_setup()
 
-last_int_state = GPIO.input(INT_PIN)
-log(f"Initial GPIO17 = {last_int_state}")
+# Initialize relays OFF
+write_pcf(pcf_state)
 
-alive_timer = time.time()
+print("[GAISMAS] Service started")
+print("[GAISMAS] PCA9555 → PCF8575 polling")
 
-# ================= MAIN LOOP =================
 try:
     while True:
-        current = GPIO.input(INT_PIN)
+        inputs = read_pca_inputs()
 
-        # Detect state change
-        if current != last_int_state:
-            log(f"GPIO17 changed: {last_int_state} -> {current}")
-            last_int_state = current
+        # Direct 1:1 mapping
+        # PCA bit = relay bit
+        # PCA LOW  -> relay ON
+        # PCA HIGH -> relay OFF
+        pcf_state = inputs  # invert if needed below
+        pcf_state ^= 0xFFFF  # because relays are active LOW
 
-            # INT is active LOW
-            if current == GPIO.LOW:
-                handle_pca_interrupt()
+        write_pcf(pcf_state)
 
-        # Periodic health check
-        if time.time() - alive_timer >= 5:
-            log("Alive")
-            alive_timer = time.time()
-
-            if not pca_ready:
-                pca_setup()
-
+        print(f"[GAISMAS] PCA={inputs:016b}  PCF={pcf_state:016b}")
         time.sleep(POLL_INTERVAL)
 
 except KeyboardInterrupt:
-    log("Stopping (KeyboardInterrupt)")
-
-except Exception as e:
-    log(f"Fatal error: {e}")
-
+    pass
 finally:
-    GPIO.cleanup()
-    if bus:
-        bus.close()
-    log("Service stopped")
+    write_pcf(0xFFFF)
+    bus.close()
+    print("[GAISMAS] Stopped")
