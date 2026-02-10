@@ -1,22 +1,27 @@
-from adafruit_pcf8574 import PCF8574
-import busio
-import board
 import time
+import board
+import busio
+from adafruit_pcf8575 import PCF8575
 
-# Initialize I2C
+# -------------------- I2C --------------------
 i2c = busio.I2C(board.SCL, board.SDA)
-pcf = PCF8574(i2c, address=0x27)
+time.sleep(1)
 
-# Create pins
-pins = [pcf.get_pin(i) for i in range(8)]
+# -------------------- PCF8575 setup --------------------
+pcf = PCF8575(i2c, address=0x27)
 
-# Set pins as outputs (latest API: use 1 for OUTPUT, 0 for INPUT)
-for p in pins:
-    p.direction = 1  # 1 = OUTPUT, 0 = INPUT
+# Start with all relays OFF (active-low -> HIGH = off)
+pcf.value = 0xFFFF
 
-# Blink relays one by one
+# -------------------- Blink relays one by one --------------------
 while True:
-    for p in pins:
-        p.value = True   # ON
+    for i in range(8):  # pins 0–7
+        mask = 1 << i
+
+        # Turn relay ON (active-low)
+        pcf.value &= ~mask
         time.sleep(0.5)
-        p.value = False  # OFF
+
+        # Turn relay OFF
+        pcf.value |= mask
+        time.sleep(0.5)
