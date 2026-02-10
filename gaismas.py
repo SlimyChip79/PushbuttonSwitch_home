@@ -7,14 +7,13 @@ import time
 i2c = busio.I2C(board.SCL, board.SDA)
 pcf = PCF8574(i2c, address=0x27)
 
-# Set all pins as output
-pins = [pcf.pin(i) for i in range(8)]
-for p in pins:
-    p.direction = True  # True = OUTPUT
+# Set all pins as outputs
+for i in range(8):
+    pcf[i].direction = True  # OUTPUT
 
 # Turn relays on/off one by one
 while True:
-    for p in pins:
-        p.value = True    # ON
+    for i in range(8):
+        pcf[i].value = True   # ON
         time.sleep(0.5)
-        p.value = False   # OFF
+        pcf[i].value = False  # OFF
