@@ -3,17 +3,20 @@ import busio
 import board
 import time
 
-# Setup I2C
+# Initialize I2C
 i2c = busio.I2C(board.SCL, board.SDA)
 pcf = PCF8574(i2c, address=0x27)
 
-# Set all pins as outputs
-for i in range(8):
-    pcf[i].direction = True  # OUTPUT
+# Create pins 0-7
+pins = [pcf.get_pin(i) for i in range(8)]
 
-# Turn relays on/off one by one
+# Set all pins as outputs
+for p in pins:
+    p.direction = True  # True = OUTPUT
+
+# Blink relays one by one
 while True:
-    for i in range(8):
-        pcf[i].value = True   # ON
+    for p in pins:
+        p.value = True   # ON
         time.sleep(0.5)
-        pcf[i].value = False  # OFF
+        p.value = False  # OFF
