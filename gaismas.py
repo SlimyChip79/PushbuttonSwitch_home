@@ -3,16 +3,16 @@ import busio
 import board
 import time
 
-# I2C setup
+# Initialize I2C
 i2c = busio.I2C(board.SCL, board.SDA)
 pcf = PCF8574(i2c, address=0x27)
 
-# Setup pins
+# Create pins
 pins = [pcf.get_pin(i) for i in range(8)]
 
-# Set all pins as OUTPUT using the proper constant
+# Set pins as outputs (latest API: use 1 for OUTPUT, 0 for INPUT)
 for p in pins:
-    p.direction = PCF8574.OUTPUT  # <-- this is the correct way
+    p.direction = 1  # 1 = OUTPUT, 0 = INPUT
 
 # Blink relays one by one
 while True:
